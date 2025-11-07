@@ -1,10 +1,21 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 
 from google.cloud import firestore
 
 app = FastAPI(title="Todo API")
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Serve index.html at the root
+@app.get("/", response_class=HTMLResponse)
+async def read_root():
+    with open("static/index.html", "r") as f:
+        return f.read()
 
 # Initialize Firestore DB
 db = firestore.Client()

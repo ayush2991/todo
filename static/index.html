@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Todo List</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #0056b3;
+            text-align: center;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+        }
+        li {
+            background-color: #e9ecef;
+            margin-bottom: 10px;
+            padding: 10px 15px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        li.completed {
+            text-decoration: line-through;
+            color: #6c757d;
+        }
+        .todo-id {
+            font-weight: bold;
+            margin-right: 10px;
+            color: #007bff;
+        }
+        .todo-title {
+            flex-grow: 1;
+        }
+        .todo-description {
+            font-size: 0.9em;
+            color: #555;
+            margin-left: 15px;
+        }
+        .status {
+            font-size: 0.8em;
+            padding: 3px 8px;
+            border-radius: 3px;
+            color: white;
+        }
+        .status.completed {
+            background-color: #28a745;
+        }
+        .status.pending {
+            background-color: #ffc107;
+        }
+        .refresh-button {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .refresh-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Todo List</h1>
+        <button class="refresh-button" onclick="fetchTodos()">Refresh List</button>
+        <ul id="todo-list">
+            <!-- Todo items will be loaded here by JavaScript -->
+        </ul>
+    </div>
+
+    <script>
+        async function fetchTodos() {
+            const todoList = document.getElementById('todo-list');
+            todoList.innerHTML = 'Loading todos...'; // Clear and show loading message
+
+            try {
+                const response = await fetch('/todos');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const todos = await response.json();
+                
+                todoList.innerHTML = ''; // Clear loading message
+
+                if (todos.length === 0) {
+                    todoList.innerHTML = '<li>No todo items found.</li>';
+                    return;
+                }
+
+                todos.forEach(todo => {
+                    const listItem = document.createElement('li');
+                    listItem.className = todo.completed ? 'completed' : '';
+                    listItem.innerHTML = `
+                        <span class="todo-id">ID: ${todo.id}</span>
+                        <span class="todo-title">${todo.title}</span>
+                        ${todo.description ? `<span class="todo-description">(${todo.description})</span>` : ''}
+                        <span class="status ${todo.completed ? 'completed' : 'pending'}">
+                            ${todo.completed ? 'Completed' : 'Pending'}
+                        </span>
+                    `;
+                    todoList.appendChild(listItem);
+                });
+            } catch (error) {
+                console.error('Error fetching todos:', error);
+                todoList.innerHTML = '<li>Error loading todos. Please try again.</li>';
+            }
+        }
+
+        // Fetch todos when the page loads
+        window.onload = fetchTodos;
+    </script>
+</body>
+</html>

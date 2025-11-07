@@ -2,66 +2,81 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 
+from google.cloud import firestore
+
 app = FastAPI(title="Todo API")
 
+# Initialize Firestore DB
+db = firestore.Client()
+
 class Todo(BaseModel):
-    id: int
+    id: Optional[str] = None  # Firestore document IDs are strings
     title: str
     description: Optional[str] = None
     completed: bool = False
 
-# In-memory database
-db: List[Todo] = [
-    Todo(id=1, title="Buy groceries", description="Milk, Bread, Cheese"),
-    Todo(id=2, title="Learn FastAPI", completed=True),
-]
-
 @app.get("/todos", response_model=List[Todo])
 def get_todos():
     """
-    Get all todo items.
+    Get all todo items from Firestore.
     """
-    return db
+    todos_ref = db.collection("todos")
+    all_todos = [Todo(id=doc.id, **doc.to_dict()) for doc in todos_ref.stream()]
+    return all_todos
 
 @app.get("/todos/{todo_id}", response_model=Todo)
-def get_todo(todo_id: int):
+def get_todo(todo_id: str):
     """
-    Get a single todo item by its ID.
+    Get a single todo item by its ID from Firestore.
     """
-    todo = next((todo for todo in db if todo.id == todo_id), None)
-    if todo is None:
+    todo_ref = db.collection("todos").document(todo_id)
+    doc = todo_ref.get()
+    if not doc.exists:
         raise HTTPException(status_code=404, detail="Todo not found")
-    return todo
+    return Todo(id=doc.id, **doc.to_dict())
 
 @app.post("/todos", response_model=Todo, status_code=201)
 def create_todo(todo: Todo):
     """
-    Create a new todo item.
+    Create a new todo item in Firestore.
     """
-    if any(t.id == todo.id for t in db):
-        raise HTTPException(status_code=400, detail="Todo with this ID already exists")
-    db.append(todo)
-    return todo
+    todos_ref = db.collection("todos")
+    if todo.id:
+        # Check if a todo with this ID already exists
+        doc = todos_ref.document(todo.id).get()
+        if doc.exists:
+            raise HTTPException(status_code=400, detail="Todo with this ID already exists")
+        todos_ref.document(todo.id).set(todo.model_dump(exclude_unset=True))
+        return todo
+    else:
+        # Let Firestore generate an ID
+        new_todo_ref = todos_ref.document()
+        todo.id = new_todo_ref.id
+        new_todo_ref.set(todo.model_dump(exclude_unset=True))
+        return todo
 
 @app.put("/todos/{todo_id}", response_model=Todo)
-def update_todo(todo_id: int, updated_todo: Todo):
+def update_todo(todo_id: str, updated_todo: Todo):
     """
-    Update an existing todo item.
+    Update an existing todo item in Firestore.
     """
-    index = next((i for i, t in enumerate(db) if t.id == todo_id), None)
-    if index is None:
+    todo_ref = db.collection("todos").document(todo_id)
+    doc = todo_ref.get()
+    if not doc.exists:
         raise HTTPException(status_code=404, detail="Todo not found")
-    db[index] = updated_todo
-    return updated_todo
+
+    # Update the document with the new data
+    todo_ref.update(updated_todo.model_dump(exclude_unset=True))
+    return Todo(id=todo_id, **todo_ref.get().to_dict())
 
 @app.delete("/todos/{todo_id}", status_code=204)
-def delete_todo(todo_id: int):
+def delete_todo(todo_id: str):
     """
-    Delete a todo item.
+    Delete a todo item from Firestore.
     """
-    global db
-    initial_len = len(db)
-    db = [t for t in db if t.id != todo_id]
-    if len(db) == initial_len:
+    todo_ref = db.collection("todos").document(todo_id)
+    doc = todo_ref.get()
+    if not doc.exists:
         raise HTTPException(status_code=404, detail="Todo not found")
+    todo_ref.delete()
     return

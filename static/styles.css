@@ -325,11 +325,36 @@ button.danger {
   border-bottom: 1px solid var(--border); 
 }
 
+/* Keep header and body paddings in sync so vertical separators align when
+   the calendar body has a scrollbar. The days grid also has padding-right so
+   mirror that here. */
+.calendar-header {
+  padding-right: 12px;
+  box-sizing: border-box;
+}
+
 .calendar-header .cell { 
   padding: 10px; 
   text-align: center; 
   color: var(--muted); 
-  border-left: 1px solid var(--border); 
+  /* Remove a left border from every cell and instead add a border only
+     between adjacent cells so the gutter cell doesn't contribute an extra
+     divider. This keeps column dividers perfectly aligned with the
+     `.day-column` borders. */
+  border-left: none;
+}
+
+/* Add vertical separators between header cells (but not before the gutter). */
+.calendar-header .cell + .cell {
+  border-left: 1px solid var(--border);
+}
+
+/* Gutter cell in the header aligns with the time gutter; remove left border */
+.calendar-header .cell.gutter {
+  border-left: none;
+  background: #0a0f15;
+  text-align: left;
+  padding-left: 12px;
 }
 
 .calendar-header .cell .dow { 

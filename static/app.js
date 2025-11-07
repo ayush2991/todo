@@ -275,6 +275,13 @@ function renderCalendarSkeleton() {
   // Day headers
   calendarHeaderEl.innerHTML = '';
   daysContainerEl.innerHTML = '';
+  // Add an empty gutter cell so the grid's first 60px column is occupied
+  // (the time gutter). Without this the first weekday label collapses into
+  // the time column and all weekday labels appear shifted left by one.
+  const gutterCell = document.createElement('div');
+  gutterCell.className = 'cell gutter';
+  gutterCell.setAttribute('aria-hidden', 'true');
+  calendarHeaderEl.appendChild(gutterCell);
   const daysToShow = state.viewMode === '7d' ? 7 : 4;
   
   // Set CSS variable for dynamic column count

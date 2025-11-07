@@ -14,7 +14,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Serve index.html at the root
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    with open("static/index.html", "r") as f:
+    with open("static/index.html", "r", encoding="utf-8") as f:
         return f.read()
 
 # Initialize Firestore DB
@@ -32,7 +32,12 @@ def get_todos():
     Get all todo items from Firestore.
     """
     todos_ref = db.collection("todos")
-    all_todos = [Todo(id=doc.id, **doc.to_dict()) for doc in todos_ref.stream()]
+    all_todos = []
+    for doc in todos_ref.stream():
+        data = doc.to_dict() or {}
+        # Ensure we don't pass an 'id' value twice (doc.id + data['id'])
+        data.pop("id", None)
+        all_todos.append(Todo(id=doc.id, **data))
     return all_todos
 
 @app.get("/todos/{todo_id}", response_model=Todo)
@@ -44,7 +49,9 @@ def get_todo(todo_id: str):
     doc = todo_ref.get()
     if not doc.exists:
         raise HTTPException(status_code=404, detail="Todo not found")
-    return Todo(id=doc.id, **doc.to_dict())
+    data = doc.to_dict() or {}
+    data.pop("id", None)
+    return Todo(id=doc.id, **data)
 
 @app.post("/todos", response_model=Todo, status_code=201)
 def create_todo(todo: Todo):
@@ -57,14 +64,18 @@ def create_todo(todo: Todo):
         doc = todos_ref.document(todo.id).get()
         if doc.exists:
             raise HTTPException(status_code=400, detail="Todo with this ID already exists")
-        todos_ref.document(todo.id).set(todo.model_dump(exclude_unset=True))
-        return todo
+        doc_ref.set(todo.model_dump(exclude_unset=True))
     else:
         # Let Firestore generate an ID
-        new_todo_ref = todos_ref.document()
-        todo.id = new_todo_ref.id
-        new_todo_ref.set(todo.model_dump(exclude_unset=True))
-        return todo
+        doc_ref = todos_ref.document()
+        todo.id = doc_ref.id  # Assign the generated ID to the Pydantic model
+        doc_ref.set(todo.model_dump(exclude_unset=True))
+
+    # Retrieve the newly created/set document to ensure consistency in the response
+    created_doc = doc_ref.get()
+    data = created_doc.to_dict() or {}
+    data.pop("id", None) # Remove 'id' from data to avoid conflict with doc.id
+    return Todo(id=created_doc.id, **data)
 
 @app.put("/todos/{todo_id}", response_model=Todo)
 def update_todo(todo_id: str, updated_todo: Todo):
@@ -78,7 +89,10 @@ def update_todo(todo_id: str, updated_todo: Todo):
 
     # Update the document with the new data
     todo_ref.update(updated_todo.model_dump(exclude_unset=True))
-    return Todo(id=todo_id, **todo_ref.get().to_dict())
+    updated = todo_ref.get()
+    data = updated.to_dict() or {}
+    data.pop("id", None)
+    return Todo(id=todo_id, **data)
 
 @app.delete("/todos/{todo_id}", status_code=204)
 def delete_todo(todo_id: str):

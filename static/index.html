@@ -1,135 +1,183 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Todo List</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f4f4f4;
-            color: #333;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        h1 {
-            color: #0056b3;
-            text-align: center;
-        }
-        ul {
-            list-style: none;
-            padding: 0;
-        }
-        li {
-            background-color: #e9ecef;
-            margin-bottom: 10px;
-            padding: 10px 15px;
-            border-radius: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        li.completed {
-            text-decoration: line-through;
-            color: #6c757d;
-        }
-        .todo-id {
-            font-weight: bold;
-            margin-right: 10px;
-            color: #007bff;
-        }
-        .todo-title {
-            flex-grow: 1;
-        }
-        .todo-description {
-            font-size: 0.9em;
-            color: #555;
-            margin-left: 15px;
-        }
-        .status {
-            font-size: 0.8em;
-            padding: 3px 8px;
-            border-radius: 3px;
-            color: white;
-        }
-        .status.completed {
-            background-color: #28a745;
-        }
-        .status.pending {
-            background-color: #ffc107;
-        }
-        .refresh-button {
-            display: block;
-            margin: 20px auto;
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        .refresh-button:hover {
-            background-color: #0056b3;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Planner: Inbox + Calendar</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <!-- Inline favicon -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%234A90E2'/%3E%3Crect x='8' y='14' width='48' height='42' rx='8' fill='white'/%3E%3Crect x='8' y='14' width='48' height='10' rx='8' fill='%234A90E2'/%3E%3Ccircle cx='20' cy='10' r='4' fill='%23ffffff'/%3E%3Ccircle cx='44' cy='10' r='4' fill='%23ffffff'/%3E%3C/svg%3E" />
 </head>
 <body>
-    <div class="container">
-        <h1>Todo List</h1>
-        <button class="refresh-button" onclick="fetchTodos()">Refresh List</button>
-        <ul id="todo-list">
-            <!-- Todo items will be loaded here by JavaScript -->
-        </ul>
+  <!-- HEADER: Navigation and Toolbar -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="logo">🗓️</span>
+      <div>
+        <h1>Planner</h1>
+        <span class="tagline">Inbox → Schedule</span>
+      </div>
     </div>
+    
+    <div class="toolbar">
+      <!-- Week navigation -->
+      <button id="prevWeek" title="Previous week">◀</button>
+      <button id="todayBtn" title="Jump to this week">Today</button>
+      <button id="nextWeek" title="Next week">▶</button>
+      
+      <!-- View controls -->
+      <label class="sr-only" for="viewMode">View</label>
+      <select id="viewMode" title="Choose view">
+        <option value="7d">Week view</option>
+        <option value="4d">4 days</option>
+      </select>
+      
+      <!-- Density controls -->
+      <label class="sr-only" for="density">Density</label>
+      <select id="density" title="Density">
+        <option value="compact">Compact</option>
+        <option value="cozy" selected>Default</option>
+        <option value="relaxed">Relaxed</option>
+      </select>
+      
+      <!-- Search filter -->
+      <input id="searchInput" type="search" placeholder="Search…" title="Filter tasks and events" />
+      
+      <!-- Week label -->
+      <div class="week-label" id="weekLabel">Week</div>
+    </div>
+  </header>
 
-    <script>
-        async function fetchTodos() {
-            const todoList = document.getElementById('todo-list');
-            todoList.innerHTML = 'Loading todos...'; // Clear and show loading message
+  <!-- MAIN LAYOUT: Inbox and Calendar -->
+  <main class="layout">
+    <!-- INBOX: Unscheduled Tasks -->
+    <section class="inbox" aria-labelledby="inbox-title">
+      <!-- Inbox header -->
+      <div class="inbox-header">
+        <h2 id="inbox-title">Inbox</h2>
+        <p class="muted">Tasks here aren't scheduled yet. Drag them into the calendar to plan.</p>
+      </div>
 
-            try {
-                const response = await fetch('/todos');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const todos = await response.json();
-                
-                todoList.innerHTML = ''; // Clear loading message
+      <!-- Add new task form -->
+      <form id="addTaskForm" class="add-task" autocomplete="off">
+        <input 
+          id="taskTitle" 
+          type="text" 
+          placeholder="New task title" 
+          aria-label="Task title" 
+          required 
+        />
+        <select id="taskDuration" aria-label="Default duration">
+          <option value="30">30m</option>
+          <option value="45">45m</option>
+          <option value="60" selected>1h</option>
+          <option value="90">1h 30m</option>
+          <option value="120">2h</option>
+          <option value="180">3h</option>
+        </select>
+        <button type="submit">Add</button>
+      </form>
 
-                if (todos.length === 0) {
-                    todoList.innerHTML = '<li>No todo items found.</li>';
-                    return;
-                }
+      <!-- Task list with drop zone for unscheduling -->
+      <div id="inboxDropZone" class="inbox-dropzone" aria-label="Drop here to unschedule">
+        <ul id="inboxList" class="task-list" aria-live="polite"></ul>
+        <div class="drop-hint">Drop tasks here to unschedule</div>
+      </div>
+    </section>
 
-                todos.forEach(todo => {
-                    const listItem = document.createElement('li');
-                    listItem.className = todo.completed ? 'completed' : '';
-                    listItem.innerHTML = `
-                        <span class="todo-id">ID: ${todo.id}</span>
-                        <span class="todo-title">${todo.title}</span>
-                        ${todo.description ? `<span class="todo-description">(${todo.description})</span>` : ''}
-                        <span class="status ${todo.completed ? 'completed' : 'pending'}">
-                            ${todo.completed ? 'Completed' : 'Pending'}
-                        </span>
-                    `;
-                    todoList.appendChild(listItem);
-                });
-            } catch (error) {
-                console.error('Error fetching todos:', error);
-                todoList.innerHTML = '<li>Error loading todos. Please try again.</li>';
-            }
-        }
+    <!-- CALENDAR: Week View with Time Slots -->
+    <section class="calendar" aria-labelledby="calendar-title">
+      <h2 id="calendar-title" class="sr-only">Calendar</h2>
+      
+      <!-- Calendar header: day labels -->
+      <div class="calendar-header" id="calendarHeader"></div>
+      
+      <!-- Calendar body: time gutter + day columns -->
+      <div class="calendar-body" id="calendarBody">
+        <div class="time-gutter" id="timeGutter"></div>
+        <div class="days" id="daysContainer"></div>
+      </div>
+    </section>
+  </main>
 
-        // Fetch todos when the page loads
-        window.onload = fetchTodos;
-    </script>
+  <!-- EVENT EDIT DIALOG: Modal for editing scheduled task properties -->
+  <dialog id="eventDialog">
+    <form method="dialog" id="eventForm">
+      <h3>Edit scheduled task</h3>
+      
+      <!-- Title field -->
+      <label>
+        Title
+        <input type="text" id="eventTitleInput" />
+      </label>
+      
+      <!-- Duration field -->
+      <label>
+        Duration
+        <select id="eventDurationInput">
+          <option value="30">30 minutes</option>
+          <option value="45">45 minutes</option>
+          <option value="60">1 hour</option>
+          <option value="90">1.5 hours</option>
+          <option value="120">2 hours</option>
+          <option value="180">3 hours</option>
+        </select>
+      </label>
+      
+      <!-- Recurrence type selector -->
+      <label>
+        Repeat
+        <select id="eventRepeatSelect">
+          <option value="none">Does not repeat</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="weekdays">Weekdays (Mon–Fri)</option>
+          <option value="weekends">Weekends (Sat & Sun)</option>
+          <option value="custom">Custom (pick days)</option>
+        </select>
+      </label>
+      
+      <!-- Weekday selector (shown only for custom recurrence) -->
+      <fieldset id="repeatDays" style="display:none;" aria-hidden="true">
+        <legend>Repeat on</legend>
+        <div class="weekday-checks">
+          <label><input type="checkbox" value="0" /> Sun</label>
+          <label><input type="checkbox" value="1" /> Mon</label>
+          <label><input type="checkbox" value="2" /> Tue</label>
+          <label><input type="checkbox" value="3" /> Wed</label>
+          <label><input type="checkbox" value="4" /> Thu</label>
+          <label><input type="checkbox" value="5" /> Fri</label>
+          <label><input type="checkbox" value="6" /> Sat</label>
+        </div>
+        <p class="muted small">Occurrences are generated up to 30 days into the future.</p>
+      </fieldset>
+      
+      <!-- Dialog action buttons -->
+      <div class="dialog-actions">
+        <button value="cancel" class="secondary">Close</button>
+        <button id="unscheduleBtn" class="secondary" value="unschedule">Unschedule</button>
+        <button 
+          id="deleteBtn" 
+          class="danger icon-btn" 
+          value="delete" 
+          aria-label="Delete task" 
+          title="Delete task"
+        >
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"/>
+            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            <path d="M10 11v6"/>
+            <path d="M14 11v6"/>
+            <path d="M5 6l1 14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-14"/>
+          </svg>
+          <span class="sr-only">Delete task</span>
+        </button>
+        <button id="saveBtn" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Application JavaScript -->
+  <script src="/static/app.js"></script>
 </body>
 </html>

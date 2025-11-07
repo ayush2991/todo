@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import List, Optional
+from datetime import datetime
 
 from google.cloud import firestore
 
@@ -20,88 +21,131 @@ async def read_root():
 # Initialize Firestore DB
 db = firestore.Client()
 
-class Todo(BaseModel):
-    id: Optional[str] = None  # Firestore document IDs are strings
+class Task(BaseModel):
+    id: Optional[str] = None
     title: str
-    description: Optional[str] = None
-    completed: bool = False
+    duration: int = 60
+    scheduledStart: Optional[str] = None
+    recurrence: Optional[dict] = None
+    
 
-@app.get("/todos", response_model=List[Todo])
-def get_todos():
-    """
-    Get all todo items from Firestore.
-    """
-    todos_ref = db.collection("todos")
-    all_todos = []
-    for doc in todos_ref.stream():
+    @validator('title')
+    def title_must_not_be_empty(cls, v):
+        if not isinstance(v, str) or not v.strip():
+            raise ValueError('title must be a non-empty string')
+        return v.strip()
+
+    @validator('duration')
+    def duration_must_be_reasonable(cls, v):
+        if not isinstance(v, int):
+            raise ValueError('duration must be an integer')
+        # Enforce minimum 15 minutes and maximum 3 hours (180 minutes)
+        if v < 15 or v > 3 * 60:
+            raise ValueError('duration must be between 15 and 180 minutes')
+        return v
+
+    @validator('scheduledStart')
+    def scheduled_start_must_be_iso_or_none(cls, v):
+        if v is None:
+            return v
+        if not isinstance(v, str):
+            raise ValueError('scheduledStart must be an ISO datetime string')
+        try:
+            # allow date/time with or without seconds
+            datetime.fromisoformat(v)
+        except Exception:
+            raise ValueError('scheduledStart must be a valid ISO datetime string')
+        return v
+
+    @validator('recurrence')
+    def recurrence_must_be_well_formed(cls, v):
+        if v is None:
+            return v
+        if not isinstance(v, dict):
+            raise ValueError('recurrence must be an object')
+        t = v.get('type')
+        if t not in (None, 'none', 'daily', 'weekly', 'weekdays', 'weekends', 'custom'):
+            raise ValueError("recurrence.type must be one of 'none','daily','weekly','weekdays','weekends','custom'")
+        if t == 'custom':
+            days = v.get('days')
+            if not isinstance(days, list) or not all(isinstance(x, int) and 0 <= x <= 6 for x in days):
+                raise ValueError('recurrence.days must be a list of weekday numbers 0-6')
+        return v
+
+# --- Task API (primary and only public API) ---
+
+
+@app.get("/tasks/", response_model=List[Task])
+def list_tasks():
+    """Return all tasks (backed by Firestore 'todos' collection for continuity)."""
+    coll = db.collection("todos")
+    out: List[Task] = []
+    for doc in coll.stream():
         data = doc.to_dict() or {}
-        # Ensure we don't pass an 'id' value twice (doc.id + data['id'])
+        # Backfill defaults expected by planner UI
+        data.setdefault("duration", 60)
+        data.setdefault("scheduledStart", None)
+        data.setdefault("recurrence", None)
         data.pop("id", None)
-        all_todos.append(Todo(id=doc.id, **data))
-    return all_todos
+        out.append(Task(id=doc.id, **data))
+    return out
 
-@app.get("/todos/{todo_id}", response_model=Todo)
-def get_todo(todo_id: str):
+
+@app.post("/tasks/")
+def create_task(task: dict):
+    """Create a new task in the 'todos' collection.
+
+    This endpoint accepts partial input and applies sensible defaults server-side
+    so clients don't accidentally create malformed documents. All fields are
+    validated before writing to Firestore.
+    Returns the new document ID.
     """
-    Get a single todo item by its ID from Firestore.
-    """
-    todo_ref = db.collection("todos").document(todo_id)
-    doc = todo_ref.get()
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Todo not found")
-    data = doc.to_dict() or {}
+    coll = db.collection("todos")
+    # Allow callers to pass partial payloads. Normalize and fill defaults.
+    title = (task.get('title') or '').strip() or 'Untitled'
+    duration = int(task.get('duration') or 60)
+    scheduledStart = task.get('scheduledStart') if task.get('scheduledStart') else None
+    recurrence = task.get('recurrence') if task.get('recurrence') else None
+
+    # Validate by instantiating Task (will raise 422 if invalid)
+    validated = Task(
+        title=title,
+        duration=duration,
+        scheduledStart=scheduledStart,
+        recurrence=recurrence,
+    )
+
+    payload = validated.model_dump()
+    payload.pop('id', None)
+    doc_ref = coll.document()
+    doc_ref.set(payload)
+    return {"id": doc_ref.id}
+
+
+@app.put("/tasks/{task_id}", response_model=Task)
+def update_task(task_id: str, task: Task):
+    """Merge update an existing task in the 'todos' collection and return updated resource."""
+    coll = db.collection("todos")
+    ref = coll.document(task_id)
+    if not ref.get().exists:
+        raise HTTPException(status_code=404, detail="Task not found")
+    data = task.model_dump(exclude_unset=True)
     data.pop("id", None)
-    return Todo(id=doc.id, **data)
+    ref.set(data, merge=True)
+    updated = ref.get().to_dict() or {}
+    updated.setdefault("duration", 60)
+    updated.setdefault("scheduledStart", None)
+    updated.setdefault("recurrence", None)
+    updated.pop("id", None)
+    return Task(id=task_id, **updated)
 
-@app.post("/todos", response_model=Todo, status_code=201)
-def create_todo(todo: Todo):
-    """
-    Create a new todo item in Firestore.
-    """
-    todos_ref = db.collection("todos")
-    if todo.id:
-        # Check if a todo with this ID already exists
-        doc = todos_ref.document(todo.id).get()
-        if doc.exists:
-            raise HTTPException(status_code=400, detail="Todo with this ID already exists")
-        doc_ref.set(todo.model_dump(exclude_unset=True))
-    else:
-        # Let Firestore generate an ID
-        doc_ref = todos_ref.document()
-        todo.id = doc_ref.id  # Assign the generated ID to the Pydantic model
-        doc_ref.set(todo.model_dump(exclude_unset=True))
 
-    # Retrieve the newly created/set document to ensure consistency in the response
-    created_doc = doc_ref.get()
-    data = created_doc.to_dict() or {}
-    data.pop("id", None) # Remove 'id' from data to avoid conflict with doc.id
-    return Todo(id=created_doc.id, **data)
-
-@app.put("/todos/{todo_id}", response_model=Todo)
-def update_todo(todo_id: str, updated_todo: Todo):
-    """
-    Update an existing todo item in Firestore.
-    """
-    todo_ref = db.collection("todos").document(todo_id)
-    doc = todo_ref.get()
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Todo not found")
-
-    # Update the document with the new data
-    todo_ref.update(updated_todo.model_dump(exclude_unset=True))
-    updated = todo_ref.get()
-    data = updated.to_dict() or {}
-    data.pop("id", None)
-    return Todo(id=todo_id, **data)
-
-@app.delete("/todos/{todo_id}", status_code=204)
-def delete_todo(todo_id: str):
-    """
-    Delete a todo item from Firestore.
-    """
-    todo_ref = db.collection("todos").document(todo_id)
-    doc = todo_ref.get()
-    if not doc.exists:
-        raise HTTPException(status_code=404, detail="Todo not found")
-    todo_ref.delete()
+@app.delete("/tasks/{task_id}", status_code=204)
+def delete_task(task_id: str):
+    """Delete a task from the 'todos' collection."""
+    coll = db.collection("todos")
+    ref = coll.document(task_id)
+    if not ref.get().exists:
+        raise HTTPException(status_code=404, detail="Task not found")
+    ref.delete()
     return

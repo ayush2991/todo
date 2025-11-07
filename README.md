@@ -1,176 +1,106 @@
-# Todo API
+# Planner API (Tasks)
 
-This is a simple Todo API built with FastAPI, providing basic CRUD (Create, Read, Update, Delete) operations for managing todo items.
+This repository implements a simple Planner (todo) API and single-page frontend. The backend is a FastAPI app that exposes CRUD endpoints for tasks and uses Google Firestore as the backing store. The frontend (under `static/`) provides an inbox + calendar UI that talks to the backend via `/tasks/` endpoints.
 
-## Features
+Key points:
+- API base path: `/tasks/`
+- Task model fields: `id` (string, assigned by Firestore), `title` (string), `duration` (int, minutes), `scheduledStart` (nullable ISO datetime string), `recurrence` (nullable object).
+- OpenAPI docs are available automatically at `http://localhost:8000/docs` when the server is running.
 
-*   **Create:** Add new todo items.
-*   **Read:** Retrieve all todo items or a single todo item by ID.
-*   **Update:** Modify existing todo items.
-*   **Delete:** Remove todo items.
+## Quickstart (local)
 
-## Technologies Used
+1. Clone and enter the repo:
 
-*   **Python 3.9+**
-*   **FastAPI**: A modern, fast (high-performance) web framework for building APIs with Python 3.7+ based on standard Python type hints.
-*   **Uvicorn**: An ASGI server for Python web applications.
-*   **Pydantic**: Data validation and settings management using Python type hints.
+```bash
+git clone https://github.com/ayush2991/todo.git
+cd todo
+```
 
-## Local Development Setup
+2. Create and activate a virtualenv (recommended):
 
-Follow these steps to get the project up and running on your local machine.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
-### Prerequisites
+3. Install dependencies:
 
-*   Python 3.9+ installed.
-*   `pip` (Python package installer).
+```bash
+pip install -r requirements.txt
+```
 
-### Installation
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/ayush2991/todo.git
-    cd todo
-    ```
-
-2.  **Create a virtual environment (recommended):**
-    ```bash
-    python3 -m venv .venv
-    source .venv/bin/activate
-    ```
-
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-### Running the Application
-
-To start the FastAPI application locally:
+4. Run the app:
 
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-The API will be accessible at `http://localhost:8000`.
+Open `http://localhost:8000` to see the frontend and `http://localhost:8000/docs` for the automatic API docs.
 
-## API Endpoints
+Note: The app expects access to Firestore. For local development you can use the Firestore emulator or configure Google application credentials through `GOOGLE_APPLICATION_CREDENTIALS` or environment-specific configuration.
 
-The API provides the following endpoints:
+## API Reference (current implementation)
 
-### 1. Get all Todo Items
+All endpoints live under `/tasks/`.
 
-*   **URL:** `/todos`
-*   **Method:** `GET`
-*   **Response:** `200 OK` with a list of todo items.
-    ```json
-    [
-        {
-            "id": 1,
-            "title": "Buy groceries",
-            "description": "Milk, Bread, Cheese",
-            "completed": false
-        },
-        {
-            "id": 2,
-            "title": "Learn FastAPI",
-            "description": null,
-            "completed": true
-        }
-    ]
-    ```
+- GET /tasks/  
+  - Description: List all tasks. Returns an array of Task objects.
+  - Response: 200 OK
 
-### 2. Get a Single Todo Item
+- POST /tasks/  
+  - Description: Create a new task. The server will apply defaults for missing fields.
+  - Request body: JSON object with any of these fields (partial input is accepted but validation applies):
+    - `title` (string) — recommended; empty title will be converted to `Untitled` by the server.
+    - `duration` (integer minutes) — defaults to `60`. Validated to be between 15 and 180 minutes.
+    - `scheduledStart` (string or null) — ISO datetime string, or `null` to leave unscheduled.
+    - `recurrence` (object or null) — see recurrence schema below.
+  - Response: 200 OK (JSON): `{ "id": "<document-id>" }` (the created document id).
 
-*   **URL:** `/todos/{todo_id}`
-*   **Method:** `GET`
-*   **Path Parameters:**
-    *   `todo_id` (integer): The ID of the todo item to retrieve.
-*   **Response:** `200 OK` with the specified todo item, or `404 Not Found` if the ID does not exist.
-    ```json
-    {
-        "id": 1,
-        "title": "Buy groceries",
-        "description": "Milk, Bread, Cheese",
-        "completed": false
-    }
-    ```
+- PUT /tasks/{task_id}  
+  - Description: Update (merge) an existing task. Accepts the full Task object or a subset of fields; fields are merged into the existing document.
+  - Request body: JSON object representing the task fields to update.
+  - Response: 200 OK with the updated Task resource.
 
-### 3. Create a New Todo Item
+- DELETE /tasks/{task_id}  
+  - Description: Delete the task.
+  - Response: 204 No Content
 
-*   **URL:** `/todos`
-*   **Method:** `POST`
-*   **Request Body (JSON):**
-    ```json
-    {
-        "id": 3,
-        "title": "Walk the dog",
-        "description": "Take Fido for a walk in the park",
-        "completed": false
-    }
-    ```
-*   **Response:** `201 Created` with the newly created todo item, or `400 Bad Request` if a todo with the same ID already exists.
+### Task JSON shape (server-side model)
 
-### 4. Update an Existing Todo Item
+Example Task returned by the API:
 
-*   **URL:** `/todos/{todo_id}`
-*   **Method:** `PUT`
-*   **Path Parameters:**
-    *   `todo_id` (integer): The ID of the todo item to update.
-*   **Request Body (JSON):**
-    ```json
-    {
-        "id": 1,
-        "title": "Buy groceries",
-        "description": "Milk, Bread, Cheese, Eggs",
-        "completed": true
-    }
-    ```
-*   **Response:** `200 OK` with the updated todo item, or `404 Not Found` if the ID does not exist.
-
-### 5. Delete a Todo Item
-
-*   **URL:** `/todos/{todo_id}`
-*   **Method:** `DELETE`
-*   **Path Parameters:**
-    *   `todo_id` (integer): The ID of the todo item to delete.
-*   **Response:** `204 No Content` if successful, or `404 Not Found` if the ID does not exist.
-
-## Deployment to Google Cloud Run
-
-This application can be easily deployed to Google Cloud Run directly from its GitHub repository.
-
-### Prerequisites for Cloud Run Deployment
-
-1.  **Google Cloud Project:** Ensure you have an active Google Cloud Project.
-2.  **`gcloud` CLI:** Install and authenticate the Google Cloud SDK (`gcloud auth login`).
-3.  **APIs Enabled:** Enable the Cloud Run API and Cloud Build API in your GCP project.
-4.  **GitHub Connection:** Connect your GitHub repository to Google Cloud Build. This is crucial for `--source` deployments. You can do this via the Google Cloud Console: `Cloud Build` -> `Settings` -> `GitHub App`.
-
-### Manual Deployment
-
-To deploy the current state of your GitHub repository to Cloud Run:
-
-```bash
-gcloud run deploy todo-app \
-  --source https://github.com/ayush2991/todo \
-  --region us-central1 \
-  --platform managed \
-  --allow-unauthenticated \
-  --project YOUR_PROJECT_ID
+```json
+{
+  "id": "XxYz123",
+  "title": "Write report",
+  "duration": 60,
+  "scheduledStart": "2025-11-08T09:00",
+  "recurrence": { "type": "weekly" }
+}
 ```
 
-Replace `YOUR_PROJECT_ID` with your actual Google Cloud Project ID and `us-central1` with your desired region.
+Field notes:
+- `id` — assigned by Firestore; clients should use this for updates/deletes.
+- `title` — non-empty string; trimmed server-side.
+- `duration` — minutes (integer). Server enforces 15 <= duration <= 180.
+- `scheduledStart` — ISO datetime string. Currently the code accepts and stores naive ISO strings; consider time zone normalization if your deployment needs cross-timezone correctness.
+- `scheduledStart` — ISO datetime string. The server normalizes accepted datetimes to UTC and stores/returns a canonical UTC ISO string (e.g. `2025-11-07T09:30:00Z`). Clients should prefer sending timezone-aware timestamps (with `Z` or an offset). If a naive timestamp is provided, the server assumes UTC when normalizing.
+- `recurrence` — object with `type` (one of `none`, `daily`, `weekly`, `weekdays`, `weekends`, `custom`) and, when `custom`, a `days` array with weekday numbers 0 (Sunday) .. 6 (Saturday).
 
-### Continuous Deployment (Optional)
+## Frontend
 
-For automatic deployments every time you push changes to your GitHub repository, set up a **Cloud Build Trigger**:
+The UI is a small single-page app under `static/`:
+- `static/index.html` — main page
+- `static/styles.css` — styling
+- `static/app.js` — client app that calls the `/tasks/` endpoints
 
-1.  Go to `Cloud Build` -> `Triggers` in the Google Cloud Console.
-2.  Click **"Create trigger"**.
-3.  Configure the trigger to:
-    *   Monitor pushes to a specific branch (e.g., `main`) of your `ayush2991/todo` GitHub repository.
-    *   Use **"Autodetected (Dockerfile or Buildpacks)"** for the build configuration.
-    *   Target your Cloud Run service (`todo-app`) in the correct region.
+The frontend and backend are currently in the same repository and the FastAPI app mounts the static folder so hosting is simple for development.
 
-This will ensure that your Cloud Run service is always up-to-date with your latest code on GitHub.
+## Notes & Next Steps
+
+- The repository README used to describe a `/todos` endpoint and a different task schema (id/title/description/completed). The current implementation uses `/tasks/` and the schema documented above. If you maintain external integrations, update them to use `/tasks/`.
+- `KNOWN_ISSUES.md` lists further improvements (tests, docs, timezone handling, validation hardening). Recommended next step: add tests that assert the API shapes in this README.
+
+If you want, I can also:
+- Update the README examples to show curl commands for each endpoint.
+- Generate and include the OpenAPI schema output as an example response file.

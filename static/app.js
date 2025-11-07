@@ -77,10 +77,11 @@ function startOfWeek(d) {
   date.setDate(date.getDate() - diffToMonday);
   return date;
 }
-function isoStringLocal(date) {
-  // Convert to YYYY-MM-DDTHH:MM local without seconds for storage clarity
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+function isoStringUTC(date) {
+  // Convert a Date to an ISO string in UTC with 'Z' and without milliseconds.
+  // Example: 2025-11-07T09:30Z
+  const s = date.toISOString();
+  return s.replace(/\.\d{3}Z$/, 'Z');
 }
 function parseISO(s) {
   if (!s) return null;
@@ -699,7 +700,7 @@ function expandRecurrences(tasks) {
     else if (type === 'weekends') include = weekday === 0 || weekday === 6; // Sun/Sat
     else if (type === 'custom') include = daysList.includes(weekday);
       if (!include) continue;
-      const scheduledStart = isoStringLocal(instDate);
+        const scheduledStart = isoStringUTC(instDate);
       out.push({ ...t, scheduledStart, _isRecurrenceInstance: d !== 0 });
     }
   }
@@ -769,7 +770,7 @@ function scheduleTask(task, startDate) {
     window.alert('Cannot schedule events longer than 3 hours. Please shorten the task duration first.');
     return;
   }
-  const payload = { title: task.title, duration: task.duration, scheduledStart: isoStringLocal(startDate) };
+  const payload = { title: task.title, duration: task.duration, scheduledStart: isoStringUTC(startDate) };
   const candidate = { ...task, ...payload };
   const conflict = detectConflictForCandidate(candidate, task.id);
   if (conflict.conflict) {
